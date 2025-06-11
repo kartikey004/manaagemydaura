@@ -46,11 +46,12 @@ export const addVisitThunk = createAsyncThunk(
 
 export const deleteVisitThunk = createAsyncThunk(
   'visits/delete',
-  async ({visitId}, {rejectWithValue}) => {
+  async (visitId, {rejectWithValue}) => {
     try {
+      console.log('Visit deletion data:', visitId);
       const response = await api.delete(`visits/delete/${visitId}`);
       console.log('response:', response.data);
-      return response.data;
+      return {message: response.data.message, deletedId: visitId};
     } catch (error) {
       console.error(
         'Failed to delete the visit',

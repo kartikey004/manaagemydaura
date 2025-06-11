@@ -6,7 +6,7 @@ import * as Keychain from 'react-native-keychain';
 
 // Create an Axios instance
 const api = axios.create({
-  baseURL: 'http://192.168.190.101:3000/api',
+  baseURL: 'https://managemydaura-2.onrender.com/api',
 
   headers: {
     'Content-Type': 'application/json',
@@ -101,13 +101,16 @@ const refreshAccessToken = async () => {
     if (!credentials) return false;
 
     const refreshToken = credentials.password;
-    const response = await axios.get('http://192.168.190.101:3000/api', {
-      token: refreshToken,
-      withCredentials: true,
-      headers: {
-        'Content-Type': 'application/json',
+    const response = await axios.get(
+      'https://managemydaura-2.onrender.com/api',
+      {
+        token: refreshToken,
+        withCredentials: true,
+        headers: {
+          'Content-Type': 'application/json',
+        },
       },
-    });
+    );
 
     if (response.data.success && response.data.accessToken) {
       const newAccessToken = response.data.token;

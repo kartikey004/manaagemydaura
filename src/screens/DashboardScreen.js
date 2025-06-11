@@ -16,6 +16,10 @@ import {
   ScrollView,
   KeyboardAvoidingView,
 } from 'react-native';
+import {sendSchedule} from '../redux/scheduleSlice';
+import {deleteSchedule} from '../redux/scheduleSlice';
+import {createMaterialTopTabNavigator} from '@react-navigation/material-top-tabs';
+import {NavigationContainer} from '@react-navigation/native';
 import Contacts from 'react-native-contacts';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import moment from 'moment-timezone';
@@ -37,7 +41,7 @@ import {
   setSearchText,
   selectFilteredWorkers,
 } from '../redux/workerSlice';
-import {createSchedule} from '../redux/scheduleSlice';
+import {createSchedule, fetchAllSchedules} from '../redux/scheduleSlice';
 
 const DashboardScreen = () => {
   const [visits, setVisits] = useState([]);
@@ -59,6 +63,8 @@ const DashboardScreen = () => {
   // const [workers, setWorkers] = useState([]);
   const [workersModalVisible, setWorkersModalVisible] = useState(false);
   const [scheduleModalVisible, setScheduleModalVisible] = useState(false);
+  const [scheduleList, setScheduleList] = useState([]);
+
   const [slots, setSlots] = useState([]);
   const [startTime, setStartTime] = useState('');
   const navigation = useNavigation();
@@ -70,6 +76,12 @@ const DashboardScreen = () => {
   const filteredWorkers = useSelector(selectFilteredWorkers);
   const isReduxLoading = useSelector(state => state.worker.loading);
   const error = useSelector(state => state.worker.error);
+  const {
+    schedules,
+    loading: schedulesLoading,
+    error: schedulesError,
+  } = useSelector(state => state.schedule);
+  const Tab = createMaterialTopTabNavigator();
 
   const formatDate = date => moment(date).format('DD-MM-YY') || '';
   const formatTime = time => moment(time).format('hh:mm A') || '';
@@ -118,8 +130,8 @@ const DashboardScreen = () => {
         navigation.replace('Login');
       }
     };
-
     checkAuth();
+    dispatch(fetchAllSchedules());
   }, []);
 
   const showMode = () => {
@@ -284,6 +296,13 @@ const DashboardScreen = () => {
       Alert.alert('Error', 'All fields are required.');
       return;
     }
+
+    // visitsFetched = [...(visitsFetched || [])].sort((a, b) => {
+    //   const dateA = new Date(`${a.dateTime.date}T${a.dateTime.time}`);
+    //   const dateB = new Date(`${b.dateTime.date}T${b.dateTime.time}`);
+    //   return dateA - dateB; // Ascending order
+    // });
+
     try {
       const userEmail = await AsyncStorage.getItem('email');
       if (!userEmail) {
@@ -313,14 +332,40 @@ const DashboardScreen = () => {
 
       if (addVisitThunk.fulfilled.match(resultAction)) {
         console.log('resultAction:', resultAction);
-        const newVisit = resultAction.payload?.newVisit || {
-          ...visitData,
-          id: Date.now().toString(),
-        };
+
+        // --- START OF MODIFICATION ---
+        // Get the newVisit object. If it exists, create a *mutable copy* of it.
+        // If it doesn't exist, fall back to creating a new object from visitData.
+        let newVisit = resultAction.payload?.newVisit
+          ? {...resultAction.payload.newVisit} // Create a mutable copy here
+          : {
+              ...visitData,
+              id: Date.now().toString(),
+            };
+
+        // Ensure dateTime is a simple string for storage if it's an object from the backend
+        if (
+          typeof newVisit.dateTime === 'object' &&
+          newVisit.dateTime !== null
+        ) {
+          // Assuming your backend sends { date: 'YYYY-MM-DD', time: 'HH:MM' }
+          if (newVisit.dateTime.date && newVisit.dateTime.time) {
+            newVisit.dateTime = `${newVisit.dateTime.date} ${newVisit.dateTime.time}`;
+          } else {
+            console.warn(
+              'Unexpected dateTime object structure:',
+              newVisit.dateTime,
+            );
+            newVisit.dateTime = ''; // Fallback
+          }
+        }
+        // --- END OF MODIFICATION ---
 
         const storedVisits = await AsyncStorage.getItem('upcomingVisits');
-        let existingVisits = [];
 
+        console.log('storedVisits:', storedVisits);
+
+        let existingVisits = [];
         try {
           existingVisits = storedVisits ? JSON.parse(storedVisits) : [];
           if (!Array.isArray(existingVisits)) existingVisits = [];
@@ -358,129 +403,48 @@ const DashboardScreen = () => {
     }
   };
 
-  // const deleteVisit = async visitId => {
-  //   setLoading(true);
-  //   try {
-  //     Alert.alert(
-  //       'Confirm Deletion',
-  //       'Are you sure you want to delete this visit?',
-  //       [
-  //         {
-  //           text: 'Cancel',
-  //           style: 'cancel',
-  //           onPress: () => setLoading(false),
-  //         },
-  //         {
-  //           text: 'Delete',
-  //           onPress: async () => {
-  //             try {
-  //               await api.delete(`visits/delete/${visitId}`);
-
-  //               setVisitList(prevVisits => {
-  //                 const updatedVisits = prevVisits.filter(
-  //                   visit => visit.id !== visitId,
-  //                 );
-
-  //                 AsyncStorage.setItem(
-  //                   'upcomingVisits',
-  //                   JSON.stringify(updatedVisits),
-  //                 );
-
-  //                 return updatedVisits;
-  //               });
-
-  //               const storedVisits = await AsyncStorage.getItem(
-  //                 'upcomingVisits',
-  //               );
-  //               if (storedVisits) {
-  //                 setVisitList(JSON.parse(storedVisits));
-  //               }
-
-  //               Alert.alert('Success', 'Visit deleted successfully!');
-  //             } catch (error) {
-  //               console.error(
-  //                 'Visit Deletion Error:',
-  //                 error.response?.data || error.message,
-  //               );
-  //               Alert.alert(
-  //                 'Error',
-  //                 error.response?.data?.message || 'Failed to delete visit.',
-  //               );
-  //             } finally {
-  //               setLoading(false);
-  //             }
-  //           },
-  //         },
-  //       ],
-  //       {cancelable: true},
-  //     );
-  //   } catch (error) {
-  //     console.error('Unexpected Error:', error);
-  //     Alert.alert('Error', 'An unexpected error occurred.');
-  //     setLoading(false);
-  //   }
-  // };
-
   const deleteVisit = async visitId => {
-    setLoading(true);
+    Alert.alert(
+      'Confirm Deletion',
+      'Are you sure you want to delete this visit?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => handleDeleteVisit(visitId),
+        },
+      ],
+    );
+  };
+
+  const handleDeleteVisit = async visitId => {
+    // setLoading(true);
     try {
-      Alert.alert(
-        'Confirm Deletion',
-        'Are you sure you want to delete this visit?',
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-            onPress: () => {
-              setLoading(false);
-            },
-          },
-          {
-            text: 'Delete',
-            onPress: async () => {
-              try {
-                const resultAction = await dispatch(deleteVisitThunk(visitId));
-                console.log('resultAction:', resultAction);
+      const resultAction = await dispatch(deleteVisitThunk(visitId));
+      console.log('resultAction:', resultAction);
 
-                setVisitList(prevVisits => {
-                  const updatedVisits = prevVisits.filter(
-                    visit => visit.id !== visitId,
-                  );
+      const updatedVisits = visitList.filter(visit => visit.id !== visitId);
+      console.log('updatedVisits:', updatedVisits);
 
-                  AsyncStorage.setItem(
-                    'upcomingVisits',
-                    JSON.stringify(updatedVisits),
-                  );
-
-                  return updatedVisits;
-                });
-
-                const storedVisits = await AsyncStorage.getItem(
-                  'upcomingVisits',
-                );
-                if (storedVisits) {
-                  setVisitList(JSON.parse(storedVisits));
-                }
-                Alert.alert('Success', 'Visit deleted successfully');
-              } catch (error) {
-                console.error('Visit deletion failed', error?.message || error);
-                Alert.alert(
-                  'Visit Deletion Failed',
-                  'Something went wrong. Please try again.',
-                );
-              } finally {
-                setLoading(false);
-              }
-            },
-          },
-        ],
+      setVisitList(updatedVisits);
+      await AsyncStorage.setItem(
+        'upcomingVisits',
+        JSON.stringify(updatedVisits),
       );
+
+      Alert.alert('Success', 'Visit deleted successfully.');
     } catch (error) {
-      console.error('Error', error?.message || error);
+      console.error('Visit deletion failed', error?.message || error);
       Alert.alert(
         'Visit Deletion Failed',
         'Something went wrong. Please try again.',
       );
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -504,70 +468,33 @@ const DashboardScreen = () => {
 
   // const sendVisit = async visitId => {
   //   setLoading(true);
-  //   console.log('Sending Visit: ', visitId);
+  //   console.log('Sending Visit:', visitId);
 
   //   try {
-  //     const visitIndex = visitList.findIndex(v => v.id === visitId);
-  //     if (visitIndex === -1) {
-  //       Alert.alert('Error', 'Visit not found.');
-  //       setLoading(false);
-  //       return;
+  //     const resultAction = await dispatch(sendVisitThunk({visitId}));
+
+  //     if (sendVisitThunk.fulfilled.match(resultAction)) {
+  //       console.log('Dispatched result:', resultAction.payload);
+  //       Alert.alert('Success', 'Visit details sent successfully!');
+  //     } else {
+  //       throw new Error(
+  //         resultAction.payload || 'Failed to send visit details.',
+  //       );
   //     }
-
-  //     const visit = visitList[visitIndex];
-
-  //     const requestData = {
-  //       visitId: visitId,
-  //       location: visit.location,
-  //       message: visit.message,
-  //     };
-
-  //     console.log('Sending SMS with data:', requestData);
-
-  //     const response = await api.post('/sms/sendsms', requestData);
-
-  //     console.log('SMS Sent Successfully:', response.data);
-  //     Alert.alert('Success', 'Visit details sent successfully!');
-
-  //     const updatedVisitList = [...visitList];
-  //     updatedVisitList[visitIndex] = {...visit, isSent: true};
-  //     setVisitList(updatedVisitList);
-
-  //     await AsyncStorage.setItem('visits', JSON.stringify(updatedVisitList));
   //   } catch (error) {
-  //     console.error('Send Visit Error:', error.response?.data || error.message);
-  //     Alert.alert(
-  //       'Error',
-  //       error.response?.data?.message || 'Failed to send visit details.',
-  //     );
+  //     console.error('Send Visit Error:', error.message || error);
+  //     Alert.alert('Error', error.message || 'Failed to send visit details.');
   //   } finally {
   //     setLoading(false);
   //   }
   // };
 
-  const sendVisit = async visitId => {
-    setLoading(true);
-    console.log('Sending Visit:', visitId);
-
-    try {
-      const resultAction = await dispatch(sendVisitThunk({visitId}));
-
-      if (sendVisitThunk.fulfilled.match(resultAction)) {
-        console.log('Dispatched result:', resultAction.payload);
-        Alert.alert('Success', 'Visit details sent successfully!');
-      } else {
-        throw new Error(
-          resultAction.payload || 'Failed to send visit details.',
-        );
-      }
-    } catch (error) {
-      console.error('Send Visit Error:', error.message || error);
-      Alert.alert('Error', error.message || 'Failed to send visit details.');
-    } finally {
-      setLoading(false);
-    }
+  const sendVisit = async () => {
+    Alert.alert(
+      "Can't share visit",
+      'Messaging service is down, message will be sent automatically once the service is up again.',
+    );
   };
-
   const requestContactsPermission = async () => {
     if (Platform.OS === 'android') {
       try {
@@ -917,7 +844,7 @@ const DashboardScreen = () => {
   //   setScheduleModalVisible(false);
   // };
 
-  const handleSchedule = () => {
+  const handleSchedule = async () => {
     if (!scheduleDate || slots.length === 0) {
       Alert.alert(
         'Missing Information',
@@ -926,17 +853,13 @@ const DashboardScreen = () => {
       return;
     }
 
-    // ✅ Format date to string
-    const formattedDate = formatDate(scheduleDate); // e.g. '08-04-25'
-
-    // ✅ Convert all fields in slots to string
+    const formattedDate = formatDate(scheduleDate);
     const stringifiedSlots = slots.map(slot => ({
       time: String(slot.startTime),
       message: String(slot.message),
       location: String(slot.location),
     }));
 
-    // ✅ Create string-only payload
     const payload = {
       date: String(formattedDate),
       slots: stringifiedSlots,
@@ -944,7 +867,6 @@ const DashboardScreen = () => {
 
     console.log('Payload:', payload);
 
-    // ✅ Dispatch to backend
     dispatch(createSchedule(payload))
       .unwrap()
       .then(() => {
@@ -959,6 +881,154 @@ const DashboardScreen = () => {
       });
   };
 
+  const handleScheduleDelete = async scheduleId => {
+    try {
+      console.log('scheduleId:', scheduleId);
+      const resultAction = await dispatch(deleteSchedule(scheduleId));
+      console.log('resultAction:', resultAction);
+
+      const updatedSchedules = scheduleList.filter(
+        schedule => schedule.id !== scheduleId,
+      );
+
+      setScheduleList(updatedSchedules);
+      await AsyncStorage.setItem('schedules', JSON.stringify(updatedSchedules));
+      Alert.alert('Success', 'Schedule deleted successfully.');
+    } catch (error) {
+      console.error('Schedule deletion failed', error?.message || error);
+      Alert.alert(
+        'Schedule Deletion Failed',
+        'Something went wrong. Please try again.',
+      );
+    }
+  };
+
+  const handleScheduleSend = () => {
+    Alert.alert(
+      "Can't share schedule",
+      'Messaging service is down, message will be sent automatically once the service is up again.',
+    );
+  };
+
+  const ScheduleCard = ({
+    schedule,
+    handleScheduleDelete,
+    handleScheduleSend,
+  }) => {
+    const [expanded, setExpanded] = useState(false);
+    const slots = Array.isArray(schedule.slots) ? schedule.slots : [];
+    const slotsToDisplay = expanded ? slots : slots.slice(0, 4);
+
+    return (
+      <View style={styles.card}>
+        <Text style={styles.dateTitle}>{schedule.date}</Text>
+        {slotsToDisplay.map((slot, index) => (
+          <View key={index} style={styles.slotRow}>
+            <Text style={styles.slotTime}>{slot.time}</Text>
+            <View style={styles.slotDetails}>
+              <Text style={styles.slotMessage}>{slot.message}</Text>
+              {slot.location ? (
+                <Text style={styles.slotLocation}>{slot.location}</Text>
+              ) : null}
+            </View>
+          </View>
+        ))}
+        {slots.length > 4 && (
+          <TouchableOpacity onPress={() => setExpanded(!expanded)}>
+            <Text style={styles.moreLessText}>
+              {expanded ? 'Show less' : '...more'}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {schedule.isSent ? (
+          <Text style={styles.sentText}>Message already sent!</Text>
+        ) : (
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={() => handleScheduleDelete(schedule.id)}>
+              <Text style={styles.buttonText}>Delete</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.sendButton}
+              onPress={handleScheduleSend}>
+              <Text style={styles.buttonText}>Send</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  const VisitsTab = () => {
+    const sortedVisits = [...visitsFetched].sort(
+      (a, b) => new Date(a.dateTime.date) - new Date(b.dateTime.date),
+    );
+
+    return (
+      <FlatList
+        style={styles.flatList}
+        data={sortedVisits}
+        keyExtractor={item => item.id}
+        ListEmptyComponent={
+          <Text style={styles.noVisitsText}>No visits created yet..</Text>
+        }
+        renderItem={({item}) => (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>
+              {item.dateTime.date} at {item.dateTime.time}
+            </Text>
+            <Text style={styles.cardSubtitle}>{item.location}</Text>
+            <Text numberOfLines={2} style={styles.cardMessage}>
+              {item.message}
+            </Text>
+            {item.isSent ? (
+              <Text style={styles.sentText}>Message already sent!</Text>
+            ) : (
+              <View style={styles.buttonContainer}>
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={() => deleteVisit(item.id)}>
+                  <Text style={styles.buttonText}>Delete</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.sendButton}
+                  onPress={() => sendVisit(item.id)}>
+                  <Text style={styles.buttonText}>Send</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+      />
+    );
+  };
+
+  const SchedulesTab = () => {
+    const sortedSchedules = [...schedules].sort(
+      (a, b) => new Date(a.date) - new Date(b.date),
+    );
+
+    return (
+      <FlatList
+        style={styles.flatList}
+        data={sortedSchedules}
+        keyExtractor={(item, index) => `${item.date}-${index}`}
+        ListEmptyComponent={
+          <Text style={styles.noVisitsText}>No schedules created yet..</Text>
+        }
+        renderItem={({item}) => (
+          <ScheduleCard
+            schedule={item}
+            handleScheduleSend={handleScheduleSend}
+            handleScheduleDelete={handleScheduleDelete}
+          />
+        )}
+      />
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.container}>
@@ -967,7 +1037,7 @@ const DashboardScreen = () => {
           style={styles.headerLogo}></Image>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Upcoming Visits</Text>
+          <Text style={styles.title}>Upcoming Events</Text>
           <View style={styles.buttonGroup}>
             <TouchableOpacity
               style={styles.popupMenu}
@@ -979,47 +1049,26 @@ const DashboardScreen = () => {
           </View>
         </View>
 
-        {visitsFetched?.length === 0 ? (
-          <Text style={styles.noVisitsText}>No visits created yet...</Text>
-        ) : (
-          <FlatList
-            data={[...(visitsFetched || [])].sort((a, b) => {
-              const dateA = new Date(`${a.dateTime.date}T${a.dateTime.time}`);
-              const dateB = new Date(`${b.dateTime.date}T${b.dateTime.time}`);
-              return dateA - dateB;
-            })}
-            keyExtractor={item => item.id}
-            renderItem={({item}) => (
-              <View style={styles.card}>
-                {item.dateTime && item.dateTime.date && item.dateTime.time && (
-                  <Text style={styles.cardTitle}>
-                    {item.dateTime.date} at {item.dateTime.time}
-                  </Text>
-                )}
-                <Text style={styles.cardSubtitle}>{item.location}</Text>
-                <Text numberOfLines={2} style={styles.cardMessage}>
-                  {item.message}
-                </Text>
-                {item.isSent ? (
-                  <Text style={styles.sentText}>Message already sent!</Text>
-                ) : (
-                  <View style={styles.buttonContainer}>
-                    <TouchableOpacity
-                      style={styles.deleteButton}
-                      onPress={() => deleteVisit(item.id)}>
-                      <Text style={styles.buttonText}>Delete</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.sendButton}
-                      onPress={() => sendVisit(item.id)}>
-                      <Text style={styles.buttonText}>Send</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-            )}
+        <Tab.Navigator
+          screenOptions={{
+            tabBarLabelStyle: {
+              fontSize: 16,
+              fontWeight: 'bold',
+              // color: '#635BFF',
+            },
+            tabBarIndicatorStyle: {
+              backgroundColor: '#635BFF',
+              height: '3',
+            },
+            tabBarStyle: {backgroundColor: '#fff'},
+          }}>
+          <Tab.Screen name="Visits" component={VisitsTab} />
+          <Tab.Screen
+            style={styles.tabHeaders}
+            name="Schedules"
+            component={SchedulesTab}
           />
-        )}
+        </Tab.Navigator>
 
         <Modal visible={modalVisible} transparent animationType="fade">
           <TouchableWithoutFeedback onPress={() => setModalVisible(false)}>
@@ -1081,7 +1130,6 @@ const DashboardScreen = () => {
             </View>
           </TouchableWithoutFeedback>
         </Modal>
-
         <Modal
           animationType="fade"
           transparent={true}
@@ -1094,14 +1142,14 @@ const DashboardScreen = () => {
                   style={[styles.popupButton, styles.createScheduleMenuButton]}
                   onPress={openScheduleModal}>
                   <Text style={styles.createScheduleMenuButtonText}>
-                    Create a Schedule
+                    Create Schedule
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.popupButton, styles.createVisitMenuButton]}
                   onPress={createVisit}>
                   <Text style={styles.createVisitMenuButtonText}>
-                    Create a Visit
+                    Create Visit
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -1123,7 +1171,6 @@ const DashboardScreen = () => {
             </View>
           </TouchableWithoutFeedback>
         </Modal>
-
         <Modal
           visible={modalContactVisible}
           animationType="fade"
@@ -1187,7 +1234,6 @@ const DashboardScreen = () => {
             )}
           </View>
         </Modal>
-
         <Modal
           animationType="fade"
           transparent={true}
@@ -1232,7 +1278,6 @@ const DashboardScreen = () => {
             </View>
           </View>
         </Modal>
-
         <Modal
           visible={scheduleModalVisible}
           animationType="fade"
@@ -1356,15 +1401,16 @@ const DashboardScreen = () => {
 
               <View style={styles.scheduleModalOptions}>
                 <TouchableOpacity
-                  style={styles.submitButton}
-                  onPress={handleSchedule}>
-                  <Text style={styles.submitButtonText}>Save Schedule</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.cancelButton}
+                  style={styles.cancelScheduleButton}
                   onPress={closeScheduleModal}>
                   <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.submitButton}
+                  onPress={handleSchedule}>
+                  <Text style={styles.submitButtonText}>
+                    {loading ? 'Saving...' : 'Save Schedule'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1390,6 +1436,72 @@ const COLORS = {
 };
 
 const styles = StyleSheet.create({
+  dateTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333333',
+    marginBottom: 14,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F5',
+  },
+  slotRow: {
+    flexDirection: 'row',
+    paddingVertical: 10,
+    alignItems: 'flex-start',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F8F8FC',
+  },
+  slotTime: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#635BFF',
+    width: 110,
+    marginRight: 10,
+  },
+  slotDetails: {
+    flex: 1,
+  },
+  slotMessage: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333333',
+    marginBottom: 4,
+  },
+  slotLocation: {
+    fontSize: 14,
+    color: '#888888',
+    fontWeight: '400',
+  },
+  moreLessText: {
+    color: '#635BFF',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'left',
+    marginTop: 6,
+    // marginBottom: 10,
+    paddingVertical: 6,
+  },
+
+  scheduleCard: {
+    backgroundColor: '#e7f3ff',
+    padding: 15,
+    borderRadius: 12,
+    marginVertical: 8,
+    borderLeftWidth: 5,
+    borderLeftColor: '#007bff',
+  },
+  loadingText: {
+    textAlign: 'center',
+    marginTop: 20,
+    fontSize: 16,
+  },
+  errorText: {
+    textAlign: 'center',
+    marginTop: 20,
+    color: 'red',
+  },
+
   modalContactsContainer: {
     flex: 1,
     backgroundColor: '#F9FAFC',
@@ -1551,10 +1663,11 @@ const styles = StyleSheet.create({
   },
   title: {
     marginTop: 8,
-    fontSize: 18,
+    fontSize: 20,
     paddingLeft: 10,
     fontWeight: 'bold',
     color: '#000000',
+    fontFamily: 'roboto',
   },
 
   buttonContactContainer: {
@@ -1580,6 +1693,9 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  flatList: {
+    backgroundColor: '#F7F8FF',
   },
   noVisitsText: {
     flex: 1,
@@ -1713,7 +1829,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     backgroundColor: 'white',
-    paddingVertical: 20,
+    paddingVertical: 8,
     paddingHorizontal: 10,
     // borderRadius: 10,
     alignItems: 'flex-start',
@@ -1756,23 +1872,22 @@ const styles = StyleSheet.create({
   },
   workerListCloseButton: {
     // marginTop: 1,
-    padding: 2,
+    paddingVertical: 2,
     paddingHorizontal: 10,
     alignSelf: 'flex-end',
-    borderWidth: 1,
-    borderColor: '#635BFF',
+    // borderWidth: 1,
+    // borderColor: '#635BFF',
     // backgroundColor: '#635BFF',
     borderRadius: 5,
     marginBottom: 12,
   },
   workerListCloseButtonText: {
-    color: '#635BFF',
-    fontWeight: 'bold',
-    fontSize: 15,
+    color: COLORS.primary,
+    fontSize: 16,
   },
   workerListModalSearch: {
     borderWidth: 1,
-    width: 330,
+    width: '430',
     borderRadius: 20,
     marginBottom: 15,
     borderColor: '#635BFF',
@@ -1838,19 +1953,19 @@ const styles = StyleSheet.create({
     color: '#008000',
   },
   card: {
-    backgroundColor: '#F8F8FB',
-    borderRadius: 10,
-    padding: 16,
-    marginVertical: 8,
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 18,
+    marginVertical: 6,
     marginHorizontal: 10,
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    // Shadow for Android
-    elevation: 2,
+    shadowOffset: {width: 0, height: 3},
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 1,
     borderLeftWidth: 4,
-    borderLeftColor: '#5151F0',
+    borderLeftColor: '#635BFF',
+    position: 'relative',
   },
   cardTitle: {fontSize: 16, fontWeight: '800', color: '#333'},
   cardSubtitle: {
@@ -1881,6 +1996,9 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#fff',
     fontWeight: 'bold',
+  },
+  tabHeaders: {
+    color: '#635BFF',
   },
   modalOverlaym: {
     flex: 1,
@@ -1990,7 +2108,7 @@ const styles = StyleSheet.create({
   },
   scheduleModalContainer: {
     // flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F7F7FF',
     // borderRadius: 15,
     padding: 24,
     width: '100%',
@@ -2034,7 +2152,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   addButton: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F7F7FF',
     paddingVertical: 8,
     borderRadius: 8,
     // marginTop: 8,
@@ -2043,6 +2161,7 @@ const styles = StyleSheet.create({
   },
   addButtonText: {
     color: '#635BFF',
+    backgroundColor: '#F7F7FF',
     fontSize: 16,
     fontWeight: '500',
   },
@@ -2051,13 +2170,14 @@ const styles = StyleSheet.create({
     fontFamily: 'serif',
     fontStyle: 'italic',
     alignSelf: 'center',
-    paddingTop: 80,
+    paddingTop: 110,
+    fontSize: 16,
   },
   slotList: {
     marginBottom: 16,
   },
   slotItem: {
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F7F7FF',
     borderRadius: 8,
     padding: 12,
     marginBottom: 8,
@@ -2094,8 +2214,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
-  cancelButton: {
-    backgroundColor: '#F2F2F2',
+  cancelScheduleButton: {
+    backgroundColor: '#E0E0E0',
     paddingVertical: 8,
     borderRadius: 8,
     alignItems: 'center',
