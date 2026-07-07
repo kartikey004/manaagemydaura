@@ -1,4 +1,4 @@
-# Manage My Daura 📱
+# Manage My Daura
 
 Built and deployed a cross-platform mobile app used for scheduling and updates in real time.
 The application helps in managing visits, streamlining scheduling, and improving team coordination.
@@ -8,7 +8,7 @@ Built with **React Native** and **Node.js + Express.js**, the app enables real-t
 
 ---
 
-## 🚀 Features
+## Features
 
 - **Cross-platform Mobile App**: Works seamlessly on both Android and iOS.  
 - **Authentication & Security**: JWT-based authentication with access/refresh tokens.  
@@ -21,7 +21,7 @@ Built with **React Native** and **Node.js + Express.js**, the app enables real-t
 
 ---
 
-## 🛠 Tech Stack
+## Tech Stack
 
 **Frontend:**  
 - React Native
@@ -40,7 +40,7 @@ Built with **React Native** and **Node.js + Express.js**, the app enables real-t
 
 ---
 
-## 🛠️ Installation & Setup
+## Installation & Setup
 
 ### 1. Clone the repository
 ```bash
